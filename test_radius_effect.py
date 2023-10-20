@@ -12,6 +12,7 @@ parser.add_argument("-numsrc",type=int,default=1,help="Number of sources to use 
 parser.add_argument("-Rsrc",type=float,default=0,help="Distance of the sources from the center of the box")
 parser.add_argument("--gpu",action='store_true')
 parser.add_argument("--log",action='store_true')
+parser.add_argument("--debug",action='store_true')
 parser.add_argument("-o",type=str,default=None)
 args = parser.parse_args()
 
@@ -26,22 +27,31 @@ R_halo = 15
 # Create C2Ray object
 sim = pc2r.C2Ray_Minihalo(paramfile, N, use_octa)
 
-# We use sources distributed isotropically at a fixed radius R_src of the halo
-numsrc = int(args.numsrc)
-R_src = args.Rsrc
+if args.debug:
+    numsrc = 1
+    R_src = 0
+    x_rand = 1
+    y_rand = 1 + center
+    z_rand = 1 + center
+else:
+    # We use sources distributed isotropically at a fixed radius R_src of the halo
+    numsrc = int(args.numsrc)
+    R_src = args.Rsrc
 
-phi_rand = np.random.uniform(0.0, 2 * np.pi, numsrc)
-theta_rand = np.arccos(np.random.uniform(-1.0, 1.0, numsrc))
+    # Create random generator with fixed seed and generate angles
+    gen = np.random.default_rng(100)
+    phi_rand = gen.uniform(0.0, 2 * np.pi, numsrc)
+    theta_rand = np.arccos(gen.uniform(-1.0, 1.0, numsrc))
 
-# We must add 1 because source positions are given in 1-indexing (Fortran style)
-x_rand = 1 + center + R_src * np.sin(theta_rand) * np.cos(phi_rand)
-y_rand = 1 + center + R_src * np.sin(theta_rand) * np.sin(phi_rand)
-z_rand = 1 + center + R_src * np.cos(theta_rand)
+    # We must add 1 because source positions are given in 1-indexing (Fortran style)
+    x_rand = 1 + center + R_src * np.sin(theta_rand) * np.cos(phi_rand)
+    y_rand = 1 + center + R_src * np.sin(theta_rand) * np.sin(phi_rand)
+    z_rand = 1 + center + R_src * np.cos(theta_rand)
+
 srcpos = np.empty((3,numsrc))
 srcpos[0,:] = x_rand
 srcpos[1,:] = y_rand
 srcpos[2,:] = z_rand
-srcpos[0,:]
 tot_power = 1
 source_power = tot_power / numsrc
 srcflux = source_power * np.ones(numsrc)
