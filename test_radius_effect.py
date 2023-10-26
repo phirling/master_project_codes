@@ -8,8 +8,10 @@ import pickle as pkl
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
+parser.add_argument("-N",type=int,default=128)
 parser.add_argument("-numsrc",type=int,default=1,help="Number of sources to use (isotropically)")
 parser.add_argument("-Rsrc",type=float,default=0,help="Distance of the sources from the center of the box")
+parser.add_argument("-Rhalo",type=int,default=0,help="Radius of the halo")
 parser.add_argument("--gpu",action='store_true')
 parser.add_argument("--plot",action='store_true')
 parser.add_argument("--debug",action='store_true')
@@ -18,21 +20,21 @@ args = parser.parse_args()
 
 # Global parameters
 paramfile = "parameters.yml"
-N = 256
+N = int(args.N) #256
 use_octa = args.gpu
 center = N//2-1 # Center of the box (in C-indexing from 0)
-R_halo = 30
+R_halo = int(args.Rhalo) #30
 
 
 # Create C2Ray object
 sim = pc2r.C2Ray_Minihalo(paramfile, N, use_octa)
 
 if args.debug:
-    numsrc = 1
+    numsrc = 2
     R_src = 0
-    x_rand = 1
-    y_rand = 1 + center
-    z_rand = 1 + center
+    x_rand = np.array([1,1+center])
+    y_rand = np.array([1 + center,1])
+    z_rand = np.array([1 + center,1+center])
 else:
     # We use sources distributed isotropically at a fixed radius R_src of the halo
     numsrc = int(args.numsrc)
@@ -44,9 +46,9 @@ else:
     theta_rand = np.arccos(gen.uniform(-1.0, 1.0, numsrc))
 
     # We must add 1 because source positions are given in 1-indexing (Fortran style)
-    x_rand = 1 + center + R_src * np.sin(theta_rand) * np.cos(phi_rand)
-    y_rand = 1 + center + R_src * np.sin(theta_rand) * np.sin(phi_rand)
-    z_rand = 1 + center + R_src * np.cos(theta_rand)
+    x_rand = np.rint(1 + center + R_src * np.sin(theta_rand) * np.cos(phi_rand))
+    y_rand = np.rint(1 + center + R_src * np.sin(theta_rand) * np.sin(phi_rand))
+    z_rand = np.rint(1 + center + R_src * np.cos(theta_rand))
 
 srcpos = np.empty((3,numsrc))
 srcpos[0,:] = x_rand
@@ -64,13 +66,13 @@ srcflux = source_power * np.ones(numsrc)
 # Density field: homogeneous sphere of fixed radius R_halo with high density
 # outside the sphere, the density is very low (optically thin IGM)
 dens_ins = 0.01
-dens_out = 2e-10
+dens_out = 2e-9
 xi = np.arange(0,N)
 halopos = np.array([center,center,center])
 X,Y,Z = np.meshgrid(xi,xi,xi)
 rr = np.sqrt((X - halopos[0])**2 + (Y - halopos[1])**2 + (Z - halopos[2])**2)
 sim.ndens = np.where(rr <= R_halo,dens_ins,dens_out)
-#sim.ndens = 2e-9 * np.ones((N,N,N))
+sim.ndens = 2e-12 * np.ones((N,N,N))
 
 # Call raytracing once to compute the Gamma field everywhere
 sim.do_raytracing(srcflux,srcpos)
