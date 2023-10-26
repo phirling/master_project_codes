@@ -123,6 +123,8 @@ sim.do_raytracing(srcflux,srcpos)
 # Save the output (ionization rate + metadata)
 res = {
     'Gamma' : sim.phi_ion,
+    'ndens' : sim.ndens,
+    'srcpos' : srcpos,
     'N' : N,
     'R_src' : R_src,
     'R_halo' : R_halo,
