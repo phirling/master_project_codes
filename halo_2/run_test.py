@@ -2,6 +2,7 @@ import sys
 sys.path.append("../pyc2ray_pdm/")
 sys.path.append("../halo_1/")
 import pyc2ray as pc2r
+from pyc2ray.c2ray_base import YEAR
 import numpy as np
 import time
 import argparse
@@ -20,6 +21,7 @@ parser.add_argument("-Rsrc",type=float,default=0,help="Distance of the sources f
 parser.add_argument("--debug",action='store_true',help="Debug mode uses a single source placed at left box edge")
 
 # General script parameters
+parser.add_argument("-dt",default=None,type=float,help="Timestep to use if solving chemistry. If none, only raytrace once")
 parser.add_argument("--gpu",action='store_true')
 parser.add_argument("--plot",action='store_true')
 parser.add_argument("--plotdens",action='store_true')
@@ -35,7 +37,7 @@ args = parser.parse_args()
 paramfile = "parameters.yml"
 N = int(args.N)
 center = N//2-1 # Center of the box (in C-indexing from 0)
-boxsize = 0.2 # Mpc (~ 2 * 8 * r_200)
+boxsize = 0.05 #0.2 # Mpc (~ 2 * 8 * r_200)
 dr = boxsize / N
 rmin = dr * (-center)       # Leftmost cell
 rmax = dr * (N-1-center)    # Rightmost cell
@@ -97,7 +99,24 @@ sim.ndens = ndens
 # ===========================
 
 # Call raytracing once to compute the Gamma field everywhere
-sim.do_raytracing(srcflux,srcpos)
+if args.dt is None:
+    sim.do_raytracing(srcflux,srcpos)
+else:
+    dt = args.dt * YEAR
+    sim.evolve3D(dt,srcflux,srcpos)
+    plt.imshow(sim.xh[:,:,center].T,norm='log',origin='lower',cmap='Spectral_r',extent=extent)
+    plt.colorbar()
+    plt.title("Ionized H Fraction")
+    plt.xlabel("$x-x_\mathrm{{NFW}}$ [Mpc]")
+    plt.ylabel("$y-y_\mathrm{{NFW}}$ [Mpc]")
+    # plt.show()
+
+# dt = 65231*YEAR #1e2*YEAR
+# Or call evolve to use C2Ray to solve the chemistry
+#    for i in range(5):
+#        sim.evolve3D(dt,srcflux,srcpos)
+#        plt.imshow(sim.xh[:,:,center].T,norm='log',origin='lower',cmap='Spectral_r')
+#        plt.show()
 
 # Save the output (ionization rate + metadata)
 res = {
@@ -135,7 +154,8 @@ if args.plotdens:
     circle_src = Circle((0,0),dr*R_src,fill=False,ls='--',color='gold')
     ax2.add_patch(circle_r200)
     ax2.add_patch(circle_src)
-    ax2.text(r_200,r_200,"$r_{200}$",color='white')
-    ax2.text(0.8*dr*R_src,0.8*dr*R_src,"$r_{s}$",color='gold')
+    tf = 0.8
+    ax2.text(tf*r_200,tf*r_200,"$r_{200}$",color='white')
+    ax2.text(tf*dr*R_src,tf*dr*R_src,"$r_{s}$",color='gold')
 
 plt.show()
