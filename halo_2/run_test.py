@@ -89,9 +89,8 @@ srcflux = source_power * np.ones(numsrc)
 # =======
 # DENSITY
 # =======
-M_200_gas = fb * M_200
-nfw_halo = nfw.NFW(M_200_gas,c,eps)
-ndens = nfw_halo.density_gridded(N,boxsize)
+nfw_halo = nfw.NFW(M_200,c,eps)
+ndens = fb * nfw_halo.density_gridded(N,boxsize)
 sim.ndens = ndens
 
 # ===========================
