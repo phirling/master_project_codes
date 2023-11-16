@@ -18,10 +18,11 @@ parser.add_argument("-M200",type=float,default=3.14799e+08,help="Virial mass of 
 parser.add_argument("-c",type=float,default=17.21,help="NFW Concentration of halo")
 parser.add_argument("-nbins", type=int, default=64, help="Number of radii to sample (bins)")
 parser.add_argument("-shift", type=float, default=0.0, help="Shift applied to particles in params.yml")
+parser.add_argument("-o",default=None)
 
 args = parser.parse_args()
 fname = args.file
-
+print(fname)
 rho_c = 1.27209e+11
 fb = 0.15
 
@@ -91,4 +92,8 @@ ax.plot(rs, dens_analytical, c="darkturquoise",ls='--' ,lw=2.3,label="Model (NFW
 # nrmsd = np.std(diff) / iqr
 # print(nrmsd)
 
-plt.show()
+if args.o is not None:
+    fn = str(args.o)
+    plt.savefig(fn)
+else:
+    plt.show()

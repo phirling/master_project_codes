@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 import pickle as pkl
+from matplotlib.patches import Circle
 from tqdm import tqdm
 from matplotlib.colors import CenteredNorm
 
@@ -12,8 +13,10 @@ parser.add_argument("-M200",type=float,default=1e7,help="Virial mass of halo (to
 parser.add_argument("-c",type=float,default=17,help="NFW Concentration of halo")
 parser.add_argument("-z", type=int,default=None)
 parser.add_argument("-shell_thickness", type=int,default=2,help="Thickness of radial shells in number of cells")
+parser.add_argument("-o",default=None)
 args = parser.parse_args()
 fname = args.file[0]
+print(fname)
 
 # For analytical comparison
 rho_c = 1.27209e+11
@@ -26,6 +29,7 @@ r_s = 1/c * (M200/(4/3.*np.pi*rho_c*200))**(1/3.)
 r200 = c*r_s
 def NFW_Density(r):
     return fb*rho_0/((r/r_s)*(1+r/r_s)**2)
+
 
 # Conversion factors
 Msun_to_g = 1.989e33
@@ -45,11 +49,13 @@ else:
     boxsize = 0.00908833410701378# 0.005874066682425128
 N = dens_cgs.shape[0]
 dr = boxsize / N
-extent = (0,boxsize,0,boxsize)
+extent = (0,1000*boxsize,0,1000*boxsize)
 ctr = N//2-1
 xsp = np.logspace(np.log10(dr/2),np.log10(boxsize/2))
 xsp_full = np.linspace(-(boxsize-dr)/2 , +(boxsize-dr)/2 , N)
 dens_analytical = NFW_Density(xsp) * Msun_per_Mpc3_to_g_per_cm3
+bs = 1000*boxsize/2.0
+r200_circ = Circle((bs,bs),1000*r200,fill=False,color='white',ls='--')
 
 if args.z is None:
     zl = ctr
@@ -63,7 +69,12 @@ xslice = dens_cgs[ctr:,ctr,ctr]
 
 if args.type == "slice":
     plt.imshow(logdens_slice,extent=extent)
-    plt.colorbar()
+    plt.colorbar(label=r"$\log_{10} \rho$ [cgs]")
+    plt.xlabel("$x$ [kpc]")
+    plt.ylabel("$y$ [kpc]")
+    plt.title("Density (Slice)")
+    plt.gca().add_patch(r200_circ)
+
 elif args.type == "proj":
     plt.imshow(logdens_proj,extent=extent)
     plt.colorbar()
@@ -90,8 +101,12 @@ elif args.type == "spherical":
         marr = np.where(np.logical_and(rr > rbin_edges[i],rr <= rbin_edges[i+1]), dens_cgs, zero_arr)
         dens_shells[i] = marr.sum() / np.count_nonzero(marr)
         #print(np.count_nonzero(marr))
-    plt.loglog(rbin_centers,dens_shells,'.-')
-    plt.loglog(xsp,dens_analytical,'--')
+    plt.loglog(1000*rbin_centers,dens_shells,'.-')
+    plt.loglog(1000*xsp,dens_analytical,'--')
+    plt.xlabel("$x$ [kpc]")
+    plt.ylabel("Density [cgs]")
+    plt.title("Spherical Density Profile (Grid)")
+
     #plt.loglog(rbin_centers,NFW_Density(rbin_centers) * Msun_per_Mpc3_to_g_per_cm3,'--')
 elif args.type == "percell":
     xx,yy,zz = np.meshgrid(xsp_full,xsp_full,xsp_full)
@@ -101,4 +116,9 @@ elif args.type == "percell":
     relerr = (dens_cgs - dens_analytical_grid) / dens_analytical_grid
     plt.imshow(relerr[:,:,zl],norm=CenteredNorm(),cmap='RdBu',extent=extent)
     plt.colorbar()
-plt.show()
+
+if args.o is not None:
+    fn = str(args.o)
+    plt.savefig(fn)
+else:
+    plt.show()
