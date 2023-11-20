@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
-import pickle as pkl
+from my_format import GridSnapshot
 from matplotlib.patches import Circle
 from tqdm import tqdm
 import constants as cst
@@ -21,7 +21,6 @@ fname = args.file[0]
 print(fname)
 
 # For analytical comparison
-
 fb = 0.15
 if args.M200 is not None:
     M200 = args.M200
@@ -29,11 +28,13 @@ if args.M200 is not None:
 else:
     M200 = 1e7 # to avoid errors
     plot_analytical = False
+
 c = args.c
 delta_c = 200/3. * c**3/( np.log(1+c) - c/(1+c) )
 rho_0 = delta_c * cst.rho_c
 r_s = 1/c * (M200/(4/3.*np.pi*cst.rho_c*200))**(1/3.)
 r200 = c*r_s
+
 # NFW density
 def Density(r):
     return fb*rho_0/((r/r_s)*(1+r/r_s)**2)
@@ -50,33 +51,22 @@ def T(r,rmax):
     return T
 
 # Conversion factors
-Msun_to_g = 1.989e33
-Mpc_to_cm = 3.085678e24
-Msun_per_Mpc3_to_g_per_cm3 = Msun_to_g / (Mpc_to_cm**3)
+UnitDensity_in_cgs = cst.UnitMass_in_g / (cst.UnitLength_in_cm**3)
 
 # Load data
-with open(fname,"rb") as f:
-    res = pkl.load(f)
-
-if isinstance(res,dict):
-    dens_cgs = res["dens_cgs"]
-    temp_cgs = res["temp_cgs"]
-    boxsize = res["boxsize"]
-else:
-    # For debug old files
-    dens_cgs = res
-    boxsize = 0.00908833410701378# 0.005874066682425128
-
-
+gs = GridSnapshot(fname)
+dens_cgs = gs.dens_cgs
+temp_cgs = gs.temp_cgs
+boxsize = gs.boxsize
+xfrac = gs.xfrac
 
 N = dens_cgs.shape[0]
-xfrac = np.ones((N,N,N))
 dr = boxsize / N
 extent = (0,1000*boxsize,0,1000*boxsize)
 ctr = N//2-1
 xsp = np.logspace(np.log10(dr/2),np.log10(boxsize/2))
 xsp_full = np.linspace(-(boxsize-dr)/2 , +(boxsize-dr)/2 , N)
-dens_analytical = Density(xsp) * Msun_per_Mpc3_to_g_per_cm3
+dens_analytical = Density(xsp) * UnitDensity_in_cgs
 temp_analytical = T(xsp,2*r200)
 bs = 1000*boxsize/2.0
 r200_circ = Circle((bs,bs),1000*r200,fill=False,color='white',ls='--')
@@ -101,7 +91,7 @@ if args.type == "slice":
 
     im0 = ax[0,0].imshow(dens_cgs[:,:,zl].T,extent=extent,origin='lower',norm='log',cmap='viridis')
     im1 = ax[0,1].imshow(temp_cgs[:,:,zl].T,extent=extent,origin='lower',norm='log',cmap='jet')
-    im2 = ax[0,2].imshow(xfrac[:,:,zl].T,extent=extent,origin='lower',norm='log',cmap='Spectral_r')
+    im2 = ax[0,2].imshow(xfrac[:,:,zl].T,extent=extent,origin='lower',norm='log',cmap='Spectral_r',vmin=2e-4,vmax=1)
 
     plt.colorbar(im0)
     plt.colorbar(im1)
@@ -135,7 +125,7 @@ elif args.type == "xaxis":
         ax[0,0].loglog(xsp,dens_analytical,'--')
         ax[0,1].loglog(xsp,temp_analytical,'--')
 
-        ratio_dens = dens_xslice / (Density(xsp) * Msun_per_Mpc3_to_g_per_cm3)
+        ratio_dens = dens_xslice / (Density(xsp) * UnitDensity_in_cgs)
         ratio_temp = temp_xslice / T(xsp,2*r200)
 
         ax[1,0].set_ylabel("Ratio")
@@ -187,7 +177,7 @@ elif args.type == "spherical":
         ax[0,0].loglog(xsp,dens_analytical,'--')
         ax[0,1].loglog(xsp,temp_analytical,'--')
 
-        ratio_dens = dens_shells / (Density(rbin_centers) * Msun_per_Mpc3_to_g_per_cm3)
+        ratio_dens = dens_shells / (Density(rbin_centers) * UnitDensity_in_cgs)
         ratio_temp = temp_shells / T(rbin_centers,2*r200)
 
         ax[1,0].set_ylabel("Ratio")
@@ -203,7 +193,7 @@ elif args.type == "percell":
     xx,yy,zz = np.meshgrid(xsp_full,xsp_full,xsp_full)
     rr = np.sqrt(xx**2 + yy**2 + zz**2)
     #plt.imshow(rr[:,zl,:],norm='log',cmap='viridis_r')
-    dens_analytical_grid = Density(rr) * Msun_per_Mpc3_to_g_per_cm3
+    dens_analytical_grid = Density(rr) * UnitDensity_in_cgs
     relerr = (dens_cgs - dens_analytical_grid) / dens_analytical_grid
     plt.imshow(relerr[:,:,zl],norm=CenteredNorm(),cmap='RdBu',extent=extent)
     plt.colorbar()

@@ -4,8 +4,7 @@ import argparse
 from pNbody import Nbody
 from pNbody import mapping
 from scipy.ndimage import gaussian_filter
-from tqdm import tqdm
-import pickle as pkl
+from my_format import GridSnapshot
 import constants as cst
 
 fontsz = 11
@@ -21,8 +20,9 @@ parser.add_argument("-method", type=str, default='gaussian', help="Method to use
 parser.add_argument("-N", type=int, default=256, help="Grid Size")
 parser.add_argument("-fwhm", type=float, default=None, help="STD of Gaussian kernel")
 parser.add_argument("-nn", type=int, default=48, help="Number of neighbours to calculate RSP")
+parser.add_argument("-xfrac0", type=float, default=2e-4, help="Initial (homogeneous) ionized fraction")
 parser.add_argument("-frsp", type=float, default=2, help="Factor by which to multiply RSP for SPH smoothing")
-parser.add_argument("-o", type=str, default="gridded_density.pkl", help="Output file")
+parser.add_argument("-o", type=str, default="grid_ic.hdf5", help="Output file")
 parser.add_argument("--plot",action="store_true")
 args = parser.parse_args()
 
@@ -120,13 +120,6 @@ if args.plot:
     plt.show()
 
 # Save result
-res = {
-    "dens_cgs" : dens_cgs,
-    "temp_cgs" : temp_cgs,
-    "boxsize" : boxsize,
-    "mass_error" : mass_cons_err,
-    "npart" : npart,
-    "args" : args
-}
-with open(args.o,"wb") as f:
-    pkl.dump(res,f)
+xfrac = float(args.xfrac0) * np.ones((N,N,N))
+gs = GridSnapshot(N=N,dens_cgs=dens_cgs,temp_cgs=temp_cgs,xfrac=xfrac,boxsize=boxsize)
+gs.write(str(args.o))
