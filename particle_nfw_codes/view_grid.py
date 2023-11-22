@@ -17,6 +17,8 @@ parser.add_argument("-z", type=int,default=None)
 parser.add_argument("-shell_thickness", type=int,default=2,help="Thickness of radial shells in number of cells")
 parser.add_argument("-o",default=None)
 args = parser.parse_args()
+
+
 fname = args.file[0]
 print(fname)
 
@@ -56,7 +58,8 @@ UnitDensity_in_cgs = cst.UnitMass_in_g / (cst.UnitLength_in_cm**3)
 # Load data
 gs = GridSnapshot(fname)
 dens_cgs = gs.dens_cgs
-temp_cgs = gs.temp_cgs
+u_cgs = gs.u_cgs
+temp_cgs = (cst.gamma-1)*cst.mu*cst.mh_cgs/cst.kb_cgs * u_cgs
 boxsize = gs.boxsize
 xfrac = gs.xfrac
 

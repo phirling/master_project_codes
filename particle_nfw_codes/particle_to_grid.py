@@ -13,7 +13,7 @@ figsize = (7,5)
 
 # Parse user input
 parser = argparse.ArgumentParser(
-    description="Plot multiple density profiles against theoretical prediction"
+    description="Grid a particle distribution"
 )
 parser.add_argument("file", nargs="+", help="Nbody file")
 parser.add_argument("-method", type=str, default='gaussian', help="Method to use")
@@ -70,10 +70,11 @@ if args.method == 'gaussian':
     M_filtered = gaussian_filter(M_hist,sigma_px)
     U_filtered = gaussian_filter(U_hist,sigma_px)
     rho_filtered = gaussian_filter(rho_hist,sigma_px)
-    T_filtered = (cst.gamma-1)*cst.mu*cst.mh/cst.kb * U_filtered / M_filtered
-
+    #T_filtered = (cst.gamma-1)*cst.mu*cst.mh/cst.kb * U_filtered / M_filtered
+    u_filtered = U_filtered / M_filtered
     dens_cgs = rho_filtered * UnitDensity_in_cgs
-    temp_cgs = T_filtered
+    #temp_cgs = T_filtered
+    u_cgs = u_filtered * cst.UnitEnergy_in_cgs / cst.UnitMass_in_g
 
 elif args.method == 'SPH':
     # We normalize the positions to the box size, i.e. boxsize = 1. Any particle outside
@@ -96,15 +97,18 @@ elif args.method == 'SPH':
     M_filtered = mapping.mkmap3dksph(pos,mass,np.ones(nb.nbody,np.float32),frsp*nb.rsp, (N, N, N),verbose=1)
     print("Smoothing internal energy...")
     U_filtered = mapping.mkmap3dksph(pos,mass * internal_energy,np.ones(nb.nbody,np.float32),frsp*nb.rsp, (N, N, N),verbose=1)
+    u_filtered = U_filtered / M_filtered
 
-    T_filtered = (cst.gamma-1)*cst.mu*cst.mh/cst.kb * U_filtered / M_filtered
+    #T_filtered = (cst.gamma-1)*cst.mu*cst.mh/cst.kb * U_filtered / M_filtered
     #data = mapping.mkmap3dsph(pos,mass,np.ones(nb.nbody,np.float32),nb.rsp, (N, N, N))
     dens_cgs = M_filtered/dV * UnitDensity_in_cgs
-    temp_cgs = T_filtered
+    #temp_cgs = T_filtered
+    u_cgs = u_filtered * cst.UnitEnergy_in_cgs / cst.UnitMass_in_g
 
 mass_cons_err = ( (dens_cgs * dV / UnitDensity_in_cgs).sum() - total_mass_in_box) / total_mass_in_box
 print("Mass conservation error (relative):", mass_cons_err)
 
+temp_cgs = (cst.gamma-1)*cst.mu*cst.mh_cgs/cst.kb_cgs * u_cgs
 if args.plot:
     fig2,ax2 = plt.subplots(1,2,constrained_layout=True,figsize=(12,5.5))
     im1 = ax2[0].imshow(dens_cgs.T[:,:,N//2-1],norm='log',origin='lower',interpolation='gaussian',cmap='viridis')
@@ -121,5 +125,5 @@ if args.plot:
 
 # Save result
 xfrac = float(args.xfrac0) * np.ones((N,N,N))
-gs = GridSnapshot(N=N,dens_cgs=dens_cgs,temp_cgs=temp_cgs,xfrac=xfrac,boxsize=boxsize)
+gs = GridSnapshot(N=N,dens_cgs=dens_cgs,u_cgs=u_cgs,xfrac=xfrac,boxsize=boxsize)
 gs.write(str(args.o))
