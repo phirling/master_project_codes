@@ -137,7 +137,7 @@ Vc = Vcirc(rr)
 rho = Density(rr) 
 Ps = np.zeros(len(rr))
 for i in range(len(rr)):
-    Ps[i] = P(rr[i],rmax)
+    Ps[i] = P(rr[i],10*rmax) # Integral is to infty, here, use 10rmax
 Ts = T(Ps,rr)
 us = U(Ps,rr)
 
