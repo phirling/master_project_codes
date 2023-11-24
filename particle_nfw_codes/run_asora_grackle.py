@@ -12,35 +12,24 @@ from pygrackle.utilities.physical_constants import cm_per_mpc
 from time import time as walltime
 
 """
-Compare halo reionization result between Asora+C2Ray and Asora+Grackle
-in the case without cooling and heating
-
-Checklist
----------
-1. Is temperature array equal ? (from internal energy)
-2. How accurate is the xfrac for varying timesteps ?
-3. Which timestep to choose for grackle ?
-
-A1: There is a tiny difference (~ 0.1 K) in temperature between the
-internally computed value by grackle, and the naive perfect gas calculation
-taken from the AGORA paper. Let's use the grackle values
-
-A3: For now, we use a fixed fraction of the cell-crossing time.
-
+Halo reionization with photo-heating using Grackle
 """
 # ======================================================================
 parser = argparse.ArgumentParser()
 parser.add_argument("file", nargs="+", help="Grid IC file")
-parser.add_argument("--grackle",action='store_true')
+parser.add_argument("-numsrc",type=int,default=1,help="Number of sources to use (isotropically)")
+parser.add_argument("--isothermal",action='store_true')
 args = parser.parse_args()
 # ======================================================================
 
 # Global parameters (hardcoded)
-final_time = 1e5 * YEAR     # Final time of the simulation
-dt_c2ray = final_time / 10  # Time step to use for C2Ray time integration
-dt_factor_grackle = 1     # Fraction of the cell crossing time to use as dt
-dt_output = final_time / 5  # Time between saving snapshots
-output_dir = "snap/"
+final_time = 1e6 * YEAR     # Final time of the simulation
+dt_its_factor = 0.05            # Fraction of the ionization time scale to use as time-step
+dt_min = 0.1 * YEAR        # Minimum time-step
+dt_max = 1e4 * YEAR         # Maximum time-step
+dt_output = 1e4 * YEAR  # Time between saving snapshots
+output_dir = "snap2/"
+paramfile = "parameters2.yml"
 
 # Use standard primordial hydrogen/helium mass fractions
 X = 0.76
@@ -70,7 +59,7 @@ def from_grackle(A):
 # =================
 chemistry_data = chemistry_data()
 chemistry_data.use_grackle = 1
-chemistry_data.with_radiative_cooling = 0 # No heating or cooling
+chemistry_data.with_radiative_cooling = (not args.isothermal)
 chemistry_data.primordial_chemistry = 1
 chemistry_data.metal_cooling = 0
 chemistry_data.UVbackground = 0
@@ -115,50 +104,73 @@ fc.calculate_mean_molecular_weight()
 # Calculate initial temperature
 fc.calculate_temperature()
 
-# Set timestep as fraction of cell-crossing time
+# Cell-crossing time
 dr_cgs = boxsize_cgs / N
 cell_crossing_time = dr_cgs / cst.c_cgs
-dt_grackle = dt_factor_grackle * cell_crossing_time
 
 # =====================
 # CONFIGURE ASORA/C2RAY
 # =====================
-paramfile = "parameters.yml"
 sim = pc2r.C2Ray_Minihalo(paramfile, N, False, boxsize_Mpc)
 
 # Set material properties
-sim.ndens = ndens
-sim.temp = from_grackle(fc["temperature"])
+sim.ndens = X * ndens
 sim.xh = initial_ionized_H_fraction * np.ones((N,N,N),order='F')
 
 # ================
 # SET UP SOURCE(S)
 # ================
 center = N//2 - 1
-numsrc = 1
-x_rand = np.array([1])
-y_rand = np.array([1 + center])
-z_rand = np.array([1 + center])
+
+numsrc = int(args.numsrc)
 srcpos = np.empty((3,numsrc))
-srcpos[0,:] = x_rand
-srcpos[1,:] = y_rand
-srcpos[2,:] = z_rand
-tot_power = 1
-source_power = tot_power / numsrc
-srcflux = source_power * np.ones(numsrc)
+srcflux = np.empty(numsrc)
+
+# When using only one source, we place it at the left XY plane
+if numsrc == 1:
+    srcpos[0,0] = 1
+    srcpos[1,0] = 1 + center
+    srcpos[2,0] = 1 + center
+    srcflux[0] = 1.0
+else:
+    # Create random generator with fixed seed and generate angles
+    gen = np.random.default_rng(100)
+    phi_rand = gen.uniform(0.0, 2 * np.pi, numsrc)
+    theta_rand = np.arccos(gen.uniform(-1.0, 1.0, numsrc))
+    
+    R_src = N/2.0 - 0.5
+    offset = N/2.0
+
+    # Random positions from the center
+    srcpos[0,:] = np.ceil( offset + R_src * np.sin(theta_rand) * np.cos(phi_rand)   )
+    srcpos[1,:] = np.ceil( offset + R_src * np.sin(theta_rand) * np.sin(phi_rand)   )
+    srcpos[2,:] = np.ceil( offset + R_src * np.cos(theta_rand)                      )
+    
+    #if args.normal:
+    #    flux_std = 0.01
+    #    srcflux[:] = 1.0 / numsrc + gen.normal(scale=flux_std)
+    # For now, each isotropic source has the same flux. In the future, scatter ?
+    srcflux[:] = 1.0 / numsrc
+
+    # Error check
+    if np.any(srcpos > N) or np.any(srcpos < 1):
+        raise ValueError("Some sources are outside of the grid!")
+    if np.any(srcflux < 0.0):
+        print(srcflux)
+        raise ValueError("Some sources have negative fluxes (reduce std)")
 
 # Print some info
 print(f"Final time:                 {final_time/YEAR:.5e} yrs")
-print(f"C2Ray time-step:            {dt_c2ray/YEAR:.5e} yrs")
-print(f"Grackle time-step:          {dt_grackle/YEAR:.5e} yrs")
+print(f"Minimum asora time-step:    {dt_min/YEAR:.5e} yrs")
+print(f"Maximum asora time-step:    {dt_max/YEAR:.5e} yrs")
 print(f"Initial mu:                 {fc['mean_molecular_weight'][0]:.5f}")
 print(f"Initial mean temperature:   {fc['temperature'].mean():.4e} K")
 
 # =============
 # SET UP EVOLVE
 # =============
-def write_output(dir,output_number,u,x):
-    gso = GridSnapshot(N=N,dens_cgs=gs.dens_cgs,u_cgs=u,xfrac=x,boxsize=boxsize_Mpc)
+def write_output(dir,output_number,u,x,t):
+    gso = GridSnapshot(N=N,dens_cgs=gs.dens_cgs,u_cgs=u,xfrac=x,boxsize=boxsize_Mpc,time=t)
     fn = dir + f"snapshot_{output_number:04n}.hdf5"
     gso.write(fn)
 
@@ -166,16 +178,40 @@ current_time = 0.0
 next_output_time = dt_output
 walltime0 = walltime()
 
-if args.grackle: DT = dt_grackle
-else:            DT = dt_c2ray
-
 # Write initial state and initialize output
-write_output(output_dir,0,gs.u_cgs,sim.xh)
+write_output(output_dir,0,gs.u_cgs,sim.xh,gs.time)
 nsnap = 1
 
-while (current_time < final_time):
-    xh_prev = sim.xh
+# Save timestep values for stats
+timesteps = []
 
+while (current_time < final_time):
+
+    # Save mean ionized fraction
+    prev_mean_x = sim.xh.mean()
+
+    # Find photo-ionization rates using Asora
+    sim.do_raytracing(srcflux,srcpos)
+    
+    # Give rates to grackle & compute cooling time
+    fc["RT_HI_ionization_rate"] = to_grackle(sim.phi_ion)
+    if not args.isothermal:
+        fc["RT_heating_rate"] = to_grackle(sim.phi_heat)
+        fc.calculate_cooling_time()
+        min_cooling_time = fc["cooling_time"].min()
+
+    # "Adaptive timestep": Fraction of ionization timescale Δx/x ~ x/(1-x) Gamma^-1
+    ion_timescale_grid = sim.xh / ((1.0-sim.xh) * sim.phi_ion)
+    ion_timescale_min = ion_timescale_grid.min()
+    dt_grackle = max(dt_min,min(dt_max,dt_its_factor*ion_timescale_min))
+
+    # If 10% of cooling time is shorter, rather use that as time-step
+    if args.isothermal:
+        DT = dt_grackle
+    else:
+        DT = min(0.1*min_cooling_time,dt_grackle)
+    
+    # Adjust time-step for output & final time
     if final_time - current_time < DT:
         actual_dt = final_time - current_time
     else:
@@ -184,35 +220,40 @@ while (current_time < final_time):
     if (next_output_time <= final_time and current_time + actual_dt > next_output_time):
         actual_dt = next_output_time - current_time
 
-    print(f"-- time: {current_time/YEAR:.3e} yrs, dt: {actual_dt/YEAR:.3e} yrs, wall-clock time: {walltime()-walltime0:.3e} seconds --")
+    print(f"TIME: {current_time/YEAR:.3e} YRS, DT: {actual_dt/YEAR:.3e} YRS, WALL-CLOCK TIME: {walltime()-walltime0:.3e} S")
 
-    if args.grackle:
-        # Find photo-ionization rates using Asora
-        sim.do_raytracing(srcflux,srcpos)
+    # Solve chemisry
+    print("Solving chemistry...")
+    fc.solve_chemistry(actual_dt)
 
-        # Give rates to grackle
-        fc["RT_HI_ionization_rate"] = to_grackle(sim.phi_ion)
+    # Copy the updated ionization fractions to sim for next asora call
+    sim.xh = from_grackle(fc["HII"] / (fc["HI"] + fc["HII"]))
 
-        # Solve chemisry
-        fc.solve_chemistry(actual_dt)
+    # Save relative change in xfrac
+    mean_x = sim.xh.mean()
+    rel_change_x = (mean_x - prev_mean_x) / mean_x
 
-        # Copy the updated ionization fractions to sim for next asora call
-        sim.xh = from_grackle(fc["HII"] / (fc["HI"] + fc["HII"]))
-    else:
-        # Use built-in method of pyC2Ray
-        sim.evolve3D(actual_dt,srcflux,srcpos)
+    # Print info
+    print("-> Min ion timescale value: ",ion_timescale_min / YEAR,"yrs")
+    print(f"-> Relative change in ionized H fraction: {rel_change_x:.4e}")
 
+    # Increment simulation time
     current_time += actual_dt
 
+    # Save output if at output time
     if current_time == next_output_time:
-        write_output(output_dir,nsnap,gs.u_cgs,sim.xh)
+        write_output(output_dir,nsnap,from_grackle(fc["energy"]),sim.xh,current_time/(1e6*YEAR))
         next_output_time += dt_output
         nsnap += 1
 
-    mean_relative_change_x = np.abs( (sim.xh-xh_prev) / sim.xh ).mean()
-    print("------- > Mean relative change in x: ",mean_relative_change_x)
+    # Save timestep
+    ts_ = np.array([DT,actual_dt])
+    timesteps.append(ts_)
 
 print("done")
+
+timesteps = np.array(timesteps)
+np.savetxt(output_dir + "timesteps.txt",timesteps)
 
 plt.imshow(sim.xh[:,:,center].T,norm='log',origin='lower',cmap='Spectral_r',vmin=2e-4,vmax=1)
 plt.colorbar()
