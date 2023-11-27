@@ -34,6 +34,9 @@ r200 = c*r_s
 # Conversion factors
 UnitDensity_in_cgs = cst.UnitMass_in_g / (cst.UnitLength_in_cm**3)
 
+# Primodrial Hydrogen mass fraction
+XH = 0.76 
+
 # Make figure
 fig, ax = plt.subplots(1,3,constrained_layout=True,figsize=(12,4.2),squeeze=False)
 ax[0,0].set_xlabel("$r$ [Mpc]")
@@ -60,11 +63,21 @@ for fn in tqdm(args.files):
     gs = GridSnapshot(fn)
     dens_cgs = gs.dens_cgs
     u_cgs = gs.u_cgs
-    temp_cgs = (cst.gamma-1)*cst.mu*cst.mh_cgs/cst.kb_cgs * u_cgs
-    boxsize = gs.boxsize
     xfrac = gs.xfrac
-    if gs.time in times and gs.time != 0.0: ls = '--'
-    else: ls = '-'
+    boxsize = gs.boxsize
+    # Compute temperature assuming standard primoridal He fraction
+    # Mean molecular mass in each cell: rho_gas / (nHI + nHII + nHeI + ne)
+    # Assuming nHI = (1-x)nH, nHII = xnH, ne = xnH + deducing nHeI from primordial mass fraction:
+    mu_grid = 1.0 / (XH * (1+xfrac+0.25*(1.0/XH-1.0)))
+    temp_cgs = (cst.gamma-1) * mu_grid * cst.mh_cgs/cst.kb_cgs * u_cgs
+    #temp_cgs = (cst.gamma-1)*cst.mu*cst.mh_cgs/cst.kb_cgs * u_cgs
+
+    if gs.time in times:
+        ls = ':'
+        clr = 'black'
+    else: 
+        ls = '-'
+        clr = None
     times.append(gs.time)
     N = dens_cgs.shape[0]
     dr = boxsize / N
@@ -95,9 +108,9 @@ for fn in tqdm(args.files):
         x_HI_shells[i] = xarr.sum() / np.count_nonzero(tarr)
 
 
-    ax[0,0].loglog(rbin_centers,dens_shells,marker='.',ls=ls)
-    ax[0,1].loglog(rbin_centers,temp_shells,marker='.',ls=ls)
-    ax[0,2].loglog(rbin_centers,x_HI_shells,marker='.',ls=ls)
+    ax[0,0].loglog(rbin_centers,dens_shells,marker='.',ls=ls,color=clr)
+    ax[0,1].loglog(rbin_centers,temp_shells,marker='.',ls=ls,color=clr)
+    ax[0,2].loglog(rbin_centers,x_HI_shells,marker='.',ls=ls,color=clr)
 
 # TODO: save time of each snapshot file
 if times[-1] == times[0]: vmax = times[0]+1
