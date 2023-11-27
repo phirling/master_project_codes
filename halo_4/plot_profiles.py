@@ -12,7 +12,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("files", nargs="+", help="Nbody file")
 parser.add_argument("-M200",type=float,default=1e7,help="Virial mass of halo (total mass)")
 parser.add_argument("-c",type=float,default=17,help="NFW Concentration of halo")
-parser.add_argument("-shell_thickness", type=int,default=2,help="Thickness of radial shells in number of cells")
+parser.add_argument("-nbins", type=int,default=None,help="Number of radial bins to use (sets the shell size)")
+parser.add_argument("--log",action='store_true')
 parser.add_argument("-o",default=None)
 args = parser.parse_args()
 
@@ -56,9 +57,13 @@ for u in range(3):
     ax[0,u].axvline(r_s,ls=':',color='black')
     ax[0,u].axvline(r200,ls='--',color='black')
 
+    ax[0,u].set_yscale('log')
+    if args.log:
+        ax[0,u].set_xscale('log')
+
 # Loop through files
 times = []
-for fn in tqdm(args.files):
+for j,fn in enumerate(tqdm(args.files)):
 
     gs = GridSnapshot(fn)
     dens_cgs = gs.dens_cgs
@@ -84,10 +89,20 @@ for fn in tqdm(args.files):
     xsp = np.logspace(np.log10(dr/2),np.log10(boxsize/2))
     xsp_full = np.linspace(-(boxsize-dr)/2 , +(boxsize-dr)/2 , N)
     
-
-    rbin_edges = np.arange(0,boxsize/2,args.shell_thickness*dr)
+    if args.nbins is None:
+        nbins = N // 4 + 1
+    else:
+        nbins = int(args.nbins)
+    rbin_edges = np.linspace(0,boxsize/2,nbins)
+    shell_thickness = np.diff(rbin_edges)[0] / dr
+    if j == 0:
+        if shell_thickness < 1.0:
+            print("Warning: Shell thickness is less than a grid cell")
+        else:
+            print(f"Using spherical shells of thickness {shell_thickness:.3f} dr")
+    #rbin_edges = np.arange(0,boxsize/2,args.shell_thickness*dr)
     rbin_centers = rbin_edges[:-1] + np.diff(rbin_edges) / 2
-    nbins = len(rbin_edges)
+    #nbins = len(rbin_edges)
     xx,yy,zz = np.meshgrid(xsp_full,xsp_full,xsp_full)
     rr = np.sqrt(xx**2 + yy**2 + zz**2)
     zero_arr = np.zeros_like(rr)
@@ -108,9 +123,9 @@ for fn in tqdm(args.files):
         x_HI_shells[i] = xarr.sum() / np.count_nonzero(tarr)
 
 
-    ax[0,0].loglog(rbin_centers,dens_shells,marker='.',ls=ls,color=clr)
-    ax[0,1].loglog(rbin_centers,temp_shells,marker='.',ls=ls,color=clr)
-    ax[0,2].loglog(rbin_centers,x_HI_shells,marker='.',ls=ls,color=clr)
+    ax[0,0].plot(rbin_centers,dens_shells,marker='.',ls=ls,color=clr)
+    ax[0,1].plot(rbin_centers,temp_shells,marker='.',ls=ls,color=clr)
+    ax[0,2].plot(rbin_centers,x_HI_shells,marker='.',ls=ls,color=clr)
 
 # TODO: save time of each snapshot file
 if times[-1] == times[0]: vmax = times[0]+1
