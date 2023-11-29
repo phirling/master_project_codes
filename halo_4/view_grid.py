@@ -20,11 +20,15 @@ parser.add_argument("-z", type=int,default=None)
 parser.add_argument("-shell_thickness", type=int,default=2,help="Thickness of radial shells in number of cells")
 parser.add_argument("-interp", type=str,default=None,help="Imshow interpolation to use")
 parser.add_argument("-o",default=None)
+parser.add_argument("--neutral",action='store_true',help="show neutral H fraction rather than ionized")
+parser.add_argument("--fullH",action='store_true',help="show the full H density in the left panel (not HI/HII)")
 args = parser.parse_args()
 
 
 fname = args.file[0]
 print(fname)
+
+XH = 0.76 # Hydrogen mass fraction
 
 # For analytical comparison
 fb = 0.15
@@ -61,14 +65,19 @@ UnitDensity_in_cgs = cst.UnitMass_in_g / (cst.UnitLength_in_cm**3)
 
 # Load data
 gs = GridSnapshot(fname)
-dens_cgs = gs.dens_cgs
 u_cgs = gs.u_cgs
 #temp_cgs = (cst.gamma-1)*cst.mu*cst.mh_cgs/cst.kb_cgs * u_cgs # Old mode assuming cst mu
 boxsize = gs.boxsize
-xfrac = gs.xfrac
+if args.neutral:
+    xfrac = 1.0 - gs.xfrac
+else:
+    xfrac = gs.xfrac
+
+# This is either the neutral or ionized hydrogen density
+if args.fullH: dens_cgs = XH * gs.dens_cgs
+else: dens_cgs = XH * xfrac * gs.dens_cgs
 
 # Compute temperature assuming standard primoridal He fraction
-XH = 0.76 # Hydrogen mass fraction
 # Mean molecular mass in each cell: rho_gas / (nHI + nHII + nHeI + ne)
 # Assuming nHI = (1-x)nH, nHII = xnH, ne = xnH + deducing nHeI from primordial mass fraction:
 mu_grid = 1.0 / (XH * (1+xfrac+0.25*(1.0/XH-1.0)))
@@ -91,9 +100,13 @@ if args.type == "slice":
     for k in range(3):
         ax[0,k].set_xlabel("$x$ [kpc]")
         ax[0,k].set_ylabel("$y$ [kpc]")
-    ax[0,0].set_title("Density [g/cm3]")
+    if args.fullH: ax[0,0].set_title("H (HI+HII) Density [g/cm3]")
+    elif args.neutral: ax[0,0].set_title("HI Density [g/cm3]")
+    else: ax[0,0].set_title("HII Density [g/cm3]")
+    #ax[0,0].set_title("Density [g/cm3]")
     ax[0,1].set_title("Temperature [K]")
-    ax[0,2].set_title("Ionized Fraction")
+    if args.neutral: ax[0,2].set_title("Neutral Fraction")
+    else: ax[0,2].set_title("Ionized Fraction")
 
     if args.x is not None:
         dens_slice = dens_cgs[int(args.x),:,:]

@@ -7,7 +7,10 @@ from scipy.integrate import quad
 from tqdm import tqdm
 import cycler
 import matplotlib as mpl
+from matplotlib.colors import LinearSegmentedColormap
+import cmasher as cmr
 
+MYR = 3.15576E+13
 parser = argparse.ArgumentParser()
 parser.add_argument("files", nargs="+", help="Nbody file")
 parser.add_argument("-M200",type=float,default=1e7,help="Virial mass of halo (total mass)")
@@ -15,13 +18,16 @@ parser.add_argument("-c",type=float,default=17,help="NFW Concentration of halo")
 parser.add_argument("-nbins", type=int,default=None,help="Number of radial bins to use (sets the shell size)")
 parser.add_argument("--log",action='store_true')
 parser.add_argument("-o",default=None)
+parser.add_argument("--neutral",action='store_true',help="show neutral H fraction rather than ionized")
+parser.add_argument("--fullH",action='store_true',help="show the full H density in the left panel (not HI/HII)")
+parser.add_argument("--marker",action='store_true',help="Put a marker of center of bin on plot")
 args = parser.parse_args()
 
-# Set color cycle & corresponding cmap
-ncolor = len(args.files)
-color_cycle = plt.cm.GnBu_r(np.linspace(0, 1,ncolor,endpoint=False))
-plt.rcParams['axes.prop_cycle'] = cycler.cycler('color', color_cycle)
-cmap = mpl.cm.GnBu_r
+# Set color map & norm
+#cmap = mpl.cm.RdYlBu
+norm = mpl.colors.Normalize(vmin=0, vmax=2) # Myr
+colors = ["firebrick", "orangered","peachpuff","skyblue" ,"steelblue"] # wheat
+cmap = LinearSegmentedColormap.from_list("mycmap", colors)
 
 # Halo parameters
 fb = 0.15
@@ -48,9 +54,12 @@ ax[0,0].set_ylabel(r"$\rho(r)$ [M$_{\odot}$ Mpc$^{-3}$]")
 ax[0,1].set_ylabel(r"$T(r)$ [K]")
 ax[0,2].set_ylabel(r"$x_\mathrm{HI}(r)$")
 
-ax[0,0].set_title("Density")
+if args.fullH: ax[0,0].set_title("HI + HII Density")
+elif args.neutral: ax[0,0].set_title("HI Density")
+else: ax[0,0].set_title("HII Density")
 ax[0,1].set_title("Temperature")
-ax[0,2].set_title("Ionized Hydrogen Fraction")
+if args.neutral: ax[0,2].set_title("Neutral Hydrogen Fraction")
+else: ax[0,2].set_title("Ionized Hydrogen Fraction")
 fig.suptitle(fr"$M_{{200}} = {M200:.1e}$ M$_{{\odot}}$, $c={c:.2f}$")
 
 for u in range(3):
@@ -61,29 +70,40 @@ for u in range(3):
     if args.log:
         ax[0,u].set_xscale('log')
 
+# Colormap to the right of plots
+fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+             ax=ax[0,2], orientation='vertical', label='Time [Myr]')
+
 # Loop through files
 times = []
 for j,fn in enumerate(tqdm(args.files)):
-
     gs = GridSnapshot(fn)
-    dens_cgs = gs.dens_cgs
     u_cgs = gs.u_cgs
-    xfrac = gs.xfrac
     boxsize = gs.boxsize
+    # xfrac is either the ionized or neutral fraction
+    if args.neutral:
+        xfrac = 1.0 - gs.xfrac
+    else:
+        xfrac = gs.xfrac
+    # dens_cgs is either the full H density or the HI/HII density
+    if args.fullH:
+        dens_cgs = XH * gs.dens_cgs
+    else:
+        dens_cgs = XH * xfrac * gs.dens_cgs
+    
     # Compute temperature assuming standard primoridal He fraction
     # Mean molecular mass in each cell: rho_gas / (nHI + nHII + nHeI + ne)
     # Assuming nHI = (1-x)nH, nHII = xnH, ne = xnH + deducing nHeI from primordial mass fraction:
     mu_grid = 1.0 / (XH * (1+xfrac+0.25*(1.0/XH-1.0)))
     temp_cgs = (cst.gamma-1) * mu_grid * cst.mh_cgs/cst.kb_cgs * u_cgs
-    #temp_cgs = (cst.gamma-1)*cst.mu*cst.mh_cgs/cst.kb_cgs * u_cgs
 
-    if gs.time in times:
-        ls = ':'
-        clr = 'black'
-    else: 
-        ls = '-'
-        clr = None
-    times.append(gs.time)
+    time_myr = gs.time
+    clr = cmap(norm(time_myr))
+    if time_myr in times: ls = '--'
+    else: ls = '-'
+    if args.marker: mk = '.'
+    else: mk = None
+    times.append(time_myr)
     N = dens_cgs.shape[0]
     dr = boxsize / N
     xsp = np.logspace(np.log10(dr/2),np.log10(boxsize/2))
@@ -100,9 +120,7 @@ for j,fn in enumerate(tqdm(args.files)):
             print("Warning: Shell thickness is less than a grid cell")
         else:
             print(f"Using spherical shells of thickness {shell_thickness:.3f} dr")
-    #rbin_edges = np.arange(0,boxsize/2,args.shell_thickness*dr)
     rbin_centers = rbin_edges[:-1] + np.diff(rbin_edges) / 2
-    #nbins = len(rbin_edges)
     xx,yy,zz = np.meshgrid(xsp_full,xsp_full,xsp_full)
     rr = np.sqrt(xx**2 + yy**2 + zz**2)
     zero_arr = np.zeros_like(rr)
@@ -123,57 +141,13 @@ for j,fn in enumerate(tqdm(args.files)):
         x_HI_shells[i] = xarr.sum() / np.count_nonzero(tarr)
 
 
-    ax[0,0].plot(rbin_centers,dens_shells,marker='.',ls=ls,color=clr)
-    ax[0,1].plot(rbin_centers,temp_shells,marker='.',ls=ls,color=clr)
-    ax[0,2].plot(rbin_centers,x_HI_shells,marker='.',ls=ls,color=clr)
+    ax[0,0].plot(rbin_centers,dens_shells,marker=mk,ls=ls,color=clr)
+    ax[0,1].plot(rbin_centers,temp_shells,marker=mk,ls=ls,color=clr)
+    ax[0,2].plot(rbin_centers,x_HI_shells,marker=mk,ls=ls,color=clr)
 
-# TODO: save time of each snapshot file
-if times[-1] == times[0]: vmax = times[0]+1
-else: vmax = times[-1]
-norm = mpl.colors.Normalize(vmin=times[0], vmax=vmax)
-fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-             ax=ax[0,2], orientation='vertical', label='Time [Myr]')
 
 if args.o is not None:
     fn = str(args.o)
     plt.savefig(fn,dpi=300)
 else:
     plt.show()
-
-
-# Reference
-"""
-
-
-# NFW density
-def Density(r):
-    return fb*rho_0/((r/r_s)*(1+r/r_s)**2)
-# Integrand for the pressure
-def integrand(r):
-    return Density(r) * cst.G * 4*np.pi*rho_0*r_s**3 * ( np.log(1+r/r_s) - (r/r_s)/(1+r/r_s) ) /  r**2
-# Temperature
-def T(r,rmax):
-    press = np.zeros(len(r))
-    for i in range(len(r)):
-        press[i] = quad(integrand, r[i], rmax, args=())[0]
-    u = press/(cst.gamma-1)/Density(r)
-    T = (cst.gamma-1)*cst.mu*cst.mh/cst.kb * u
-    return T
-
-dens_analytical = Density(xsp) * UnitDensity_in_cgs
-temp_analytical = T(xsp,10*r200)
-
-if plot_analytical:
-    ax[0,0].loglog(xsp,dens_analytical,'--')
-    ax[0,1].loglog(xsp,temp_analytical,'--')
-
-    ratio_dens = dens_shells / (Density(rbin_centers) * UnitDensity_in_cgs)
-    ratio_temp = temp_shells / T(rbin_centers,2*r200)
-
-    ax[1,0].set_ylabel("Ratio")
-    ax[1,1].set_ylabel("Ratio")
-    ax[1,0].semilogx(rbin_centers,ratio_dens)
-    ax[1,1].semilogx(rbin_centers,ratio_temp)
-    ax[1,0].axhline(1,ls='--',color='black')
-    ax[1,1].axhline(1,ls='--',color='black')
-"""
