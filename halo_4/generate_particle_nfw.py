@@ -19,7 +19,7 @@ IC script to generate a NFW gas halo with variable parameters
 parser = argparse.ArgumentParser("IC for AGORA NFW halo")
 parser.add_argument("-o",dest="output",type=str,default="nfw.hdf5",help="output file name")
 parser.add_argument("--plot",action="store_true")
-parser.add_argument("-M200",type=float,default=1e7,help="Virial mass of halo (total mass)")
+parser.add_argument("-logM200",type=float,default=7,help="log10 of Virial mass of halo (total mass)")
 parser.add_argument("-c",type=float,default=17,help="NFW Concentration of halo")
 parser.add_argument("-fb",type=float,default=0.15,help="Baryonic fraction of halo (gas fraction)")
 parser.add_argument("-Ngas",type=int,default=100000,help="Number of gas particles to sample")
@@ -28,7 +28,7 @@ args = parser.parse_args()
 
 # Parameters of the halo
 fb = args.fb                       # Baryonic fraction
-M200 = args.M200
+M200 = 10.0**(float(args.logM200))
 c = args.c
 
 '''
