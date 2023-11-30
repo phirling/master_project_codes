@@ -21,11 +21,12 @@ parser.add_argument("-o",default=None)
 parser.add_argument("--neutral",action='store_true',help="show neutral H fraction rather than ionized")
 parser.add_argument("--fullH",action='store_true',help="show the full H density in the left panel (not HI/HII)")
 parser.add_argument("--marker",action='store_true',help="Put a marker of center of bin on plot")
+parser.add_argument("-tmax",type=float,default=2.0,help="Final time on colorbar in Myr")
 args = parser.parse_args()
 
 # Set color map & norm
 #cmap = mpl.cm.RdYlBu
-norm = mpl.colors.Normalize(vmin=0, vmax=2) # Myr
+norm = mpl.colors.Normalize(vmin=0, vmax=float(args.tmax)) # Myr
 colors = ["firebrick", "orangered","peachpuff","skyblue" ,"steelblue"] # wheat
 cmap = LinearSegmentedColormap.from_list("mycmap", colors)
 
@@ -145,6 +146,7 @@ for j,fn in enumerate(tqdm(args.files)):
     ax[0,1].plot(rbin_centers,temp_shells,marker=mk,ls=ls,color=clr)
     ax[0,2].plot(rbin_centers,x_HI_shells,marker=mk,ls=ls,color=clr)
 
+print(times)
 
 if args.o is not None:
     fn = str(args.o)

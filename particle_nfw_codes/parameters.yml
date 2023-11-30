@@ -6,6 +6,12 @@
 # parameters will be included here.
 # ===========================================================
 
+# ------------------------------------------
+# Parameters to set up the simulation volume
+# ------------------------------------------
+Grid:
+  resume: 0
+
 # --------------------------------------------------------------------
 # (Initial) properties of physical quantities in the simulation volume
 # --------------------------------------------------------------------
@@ -69,7 +75,7 @@ Photo:
   # Whether or not to use grey opacity (i.e. cross-section is frequency-independent)
   grey: 0
   # Whether to compute heating rates arrays (NOT USED BY CHEMISTRY SO FAR)
-  compute_heating_rates: 1
+  compute_heating_rates: 0
   R_max_cMpc: 1
   
 # -------------------------------------
@@ -116,7 +122,7 @@ Cosmology:
 # ------------
 Output:
   # Directory where results and log files are stored
-  results_basename: ./snap2/
+  results_basename: ./output/c2ray/
   # Name of the log file to write
   logfile: pyC2Ray.log
 
