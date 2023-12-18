@@ -12,12 +12,14 @@ parser.add_argument("-nbins",type=int,default=10,help="Number of radial bins to 
 parser.add_argument("-massfile",type=str,default=None,help="File to extract single density profile")
 parser.add_argument("-o",type=str,default="profiles.hdf5",help="Output file")
 parser.add_argument("-XH",type=float,default=1.0,help="Hydrogen mass fraction")
+parser.add_argument("--verbose",action='store_true')
 args = parser.parse_args()
 
 nbins = int(args.nbins)
 outfn = str(args.o)
 
 # Create new output HDF5 file and add metadata
+if args.verbose: print("Saving profiles to '" + outfn + "' ...")
 with h5py.File(outfn,"w") as f:
     f.attrs['unit_distance'] = 'kpc'
     f.attrs['unit_time'] = 'Myr'
@@ -42,8 +44,8 @@ for k,fn in enumerate(args.files):
     N = gs.N
     # Append result to HDF5 file
     with h5py.File(outfn,"a") as f:
-        #hname = fn.split(".")[-2]
-        hname = os.path.basename(fn)
+        hname = os.path.splitext(os.path.basename(fn))[0]
+        if args.verbose: print("Create group '" + hname + "'")
         f.create_group(hname)
         f[hname].attrs['time'] = time_myr
         f[hname].attrs['boxsize'] = boxsize_kpc
