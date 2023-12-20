@@ -1,13 +1,15 @@
 from mpph.my_format import GridSnapshot
 import numpy as np
-from astropy.constants import m_p, k_B
-from scipy.interpolate import CubicSpline
+from astropy.constants import m_p, k_B, M_sun
+from scipy.interpolate import CubicSpline, interp1d
+from .nfw_utils import Msun_per_kpc3_to_cgs
 
 __all__ = ['get_spherical_profile_grid',
            'get_temperature_profile_grid',
            'get_xfrac_profile_grid',
            'get_density_profile_grid',
-           'interp_xfrac_profile']
+           'interp_xfrac_profile',
+           'get_mass_sum_grid']
 
 def get_spherical_profile_grid(data,nbins):
     """
@@ -186,12 +188,86 @@ def interp_xfrac_profile(r,xHI,val):
     # Start by testing the whole profile, if not incr, use a window around ii of decreasing size
     while np.any(dlx[il:ir] < 0):
         delt -= 1
-        il = ii - delt
-        ir = ii + delt + 1
+        il = max(ii - delt,0)
+        ir = min(ii + delt + 1,N)
         if delt <= 0:
             raise RuntimeError("Cannot find a monotically increasing range of the profile")
-    
     # Interpolate the inverse function r(-log10(x)) at x = val    
-    itp = CubicSpline(negative_log_xHI[il:ir],r[il:ir])
+    itp = interp1d(negative_log_xHI[il:ir],r[il:ir])
+    #itp = CubicSpline(negative_log_xHI[il:ir],r[il:ir]) # NOTE: Cubic spline doesn't work well in few data points
     rval = itp(negative_log_val)
     return rval
+
+def get_spherical_sum_grid(data,r):
+    """
+    Compute sum of datacube inside radius
+
+    r is here given in grid units!
+    """
+    N = data.shape[0]
+
+    # Recall that the leftmost cell is at -N/2 + 0.5 cells (center)
+    if r > (N-1)/2:
+        print("[get_spherical_sum_grid] Warning: Radius larger than grid!")
+    
+    # First, we get the radius from the origin of each cell
+    # in the grid, in grid coordinates
+    xsp_full = np.linspace(-(N-1)/2 , +(N-1)/2, N)
+    xx,yy,zz = np.meshgrid(xsp_full,xsp_full,xsp_full)
+
+    # We work on the flattened grid
+    rr = (np.sqrt(xx**2 + yy**2 + zz**2)).flatten()
+    data = data.flatten()
+
+    idx_in_r = np.where(rr <= r)[0]
+    return np.sum(data[idx_in_r])
+
+def get_mass_sum_grid(filename,filename_mass,r,species='H',XH=1.0):
+    """
+    Compute the total mass inside radius r
+
+    Parameters
+    ----------
+    filename : string
+        Name of the grid snapshot file containing mass fractions
+    filename_mass : string
+        Name of the grid snapshot file containing the mass, if not present in above
+    r : float
+        Radius in kpc in which to compute mass
+    species : string
+        Species of which to compute the mass ('H','HI','HII'). Default: H
+    XH : float
+        Mass fraction of hydrogen in the gas. Default: 1.0
+
+    Returns
+    -------
+    M_R : float
+        Mass inside r, in solar masses
+    """
+    gs = GridSnapshot(filename)
+    N = gs.N
+    boxsize_kpc = gs.boxsize * 1000 # Grid stores boxsize in Mpc
+    print(boxsize_kpc)
+    dr_kpc = boxsize_kpc / N # kpc
+    dV_kpc = dr_kpc**3
+    if gs.dens_cgs is None:
+        gsm = GridSnapshot(filename_mass)
+        mdens_gas = gsm.dens_cgs * m_p.cgs.value # g/cm3
+    else:
+        mdens_gas = gs.dens_cgs * m_p.cgs.value # g/cm3
+    mdens_gas /= Msun_per_kpc3_to_cgs # Msun/kpc3
+    mass_gas_cell = dV_kpc * mdens_gas
+    if species == 'H':
+        quant = mass_gas_cell
+    elif species == 'HI':
+        quant = mass_gas_cell * (1.0 - gs.xfrac)
+    elif species == 'HII':
+        quant = mass_gas_cell * gs.xfrac
+    else:
+        raise ValueError("Unknown species:",species)
+    
+    # Radius in grid coordinates
+    r_g = r / dr_kpc
+
+    m_in_r = get_spherical_sum_grid(quant,r_g) 
+    return m_in_r

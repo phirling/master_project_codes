@@ -34,8 +34,6 @@ with h5py.File(outfn,"w") as f:
 
 # Now loop through snapshots and extract the profiles
 for k,fn in enumerate(args.files):
-    hname = fn.split(".")[-2]
-    print(hname)
     rbc, ptemp = mpph.get_temperature_profile_grid(fn,nbins,args.XH)
     rbc, pxfrac = mpph.get_xfrac_profile_grid(fn,nbins,ionized=False)
     gs = mpph.GridSnapshot(fn)

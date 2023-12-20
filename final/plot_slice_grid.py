@@ -136,6 +136,7 @@ for k,fname in enumerate(args.files):
         plt.show()
     else:
         outfn = os.path.splitext(fname)[0] + "_image.png"
+        print(outfn)
         #outfn = fname.split(".")[-2] + "_image.png"
         fig.savefig(outfn,dpi=200)
 

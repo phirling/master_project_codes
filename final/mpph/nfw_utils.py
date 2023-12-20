@@ -73,3 +73,5 @@ def NFW_internal_energy(P,r,rho_0,r_s):
     gamma = 5.0 / 3.0
     u = P/(gamma-1)/NFW_Density(r,rho_0,r_s)
     return u
+
+# fact = 1.0109 @ N=256
